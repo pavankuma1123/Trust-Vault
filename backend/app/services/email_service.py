@@ -1,5 +1,7 @@
 import logging
-import httpx
+import json
+import urllib.request
+import urllib.error
 from backend.app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -94,7 +96,8 @@ class EmailService:
         try:
             headers = {
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "TrustVault/1.0"
             }
             payload = {
                 "from": settings.EMAILS_FROM_EMAIL,
@@ -103,11 +106,16 @@ class EmailService:
                 "html": html_content
             }
             
-            with httpx.Client(timeout=10.0) as client:
-                res = client.post("https://api.resend.com/emails", headers=headers, json=payload)
-                
-            if res.status_code in (200, 201):
-                res_data = res.json()
+            data_bytes = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=data_bytes,
+                headers=headers,
+                method="POST"
+            )
+            
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                res_data = json.loads(resp.read().decode("utf-8"))
                 logger.info(f"Email successfully dispatched via Resend to {clean_email}: {res_data.get('id')}")
                 return {
                     "dispatched": True,
@@ -115,16 +123,16 @@ class EmailService:
                     "email_id": res_data.get("id"),
                     "message": f"Verification code sent to {clean_email} via Resend."
                 }
-            else:
-                err_text = res.text
-                logger.warning(f"Resend dispatch returned {res.status_code}: {err_text}")
-                # If unverified domain restriction on Resend free tier, return preview_code so testing continues smoothly
-                return {
-                    "dispatched": False,
-                    "provider": "RESEND_FALLBACK",
-                    "preview_code": code,
-                    "message": f"Code dispatched: {code} (Note: Resend free tier allows direct delivery to registered account)"
-                }
+        except urllib.error.HTTPError as e:
+            err_text = e.read().decode("utf-8")
+            logger.warning(f"Resend dispatch returned {e.code}: {err_text}")
+            # If unverified domain restriction on Resend free tier, return preview_code so testing continues smoothly
+            return {
+                "dispatched": False,
+                "provider": "RESEND_FALLBACK",
+                "preview_code": code,
+                "message": f"Code dispatched: {code} (Note: Resend free tier allows direct delivery to registered account)"
+            }
         except Exception as e:
             logger.error(f"Error calling Resend API: {e}")
             return {
