@@ -77,12 +77,15 @@ def health_check():
         "envelope_encryption": "AES-256-GCM"
     }
 
-# Mount built React Frontend if available (at the end so API routes take precedence)
+# Mount built React Frontend for local self-contained execution (Vercel edge handles static serving)
 from pathlib import Path
 from starlette.staticfiles import StaticFiles
-frontend_dist = Path("frontend/dist")
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+from backend.app.core.config import is_vercel
+
+if not is_vercel:
+    frontend_dist = Path("frontend/dist")
+    if frontend_dist.exists():
+        app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn
