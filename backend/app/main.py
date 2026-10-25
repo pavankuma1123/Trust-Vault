@@ -77,13 +77,50 @@ def health_check():
         "envelope_encryption": "AES-256-GCM"
     }
 
-# Mount built React Frontend if available
+# Mount built React Frontend if available with cache-busting headers
 from pathlib import Path
 from starlette.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 frontend_dist = Path("frontend/dist")
 if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def serve_root():
+        index_file = frontend_dist / "index.html"
+        return FileResponse(
+            str(index_file),
+            media_type="text/html",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        )
+
+    # SPA Fallback for client-side routing
+    @app.exception_handler(404)
+    async def custom_404_handler(request: Request, exc: Exception):
+        path = request.url.path
+        if path.startswith("/api/") or path.startswith("/v1/"):
+            return JSONResponse(status_code=404, content={"detail": "Not Found"})
+        index_file = frontend_dist / "index.html"
+        if index_file.exists():
+            return FileResponse(
+                str(index_file),
+                media_type="text/html",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                }
+            )
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn
