@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+*.db
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+
+# Vault storage (ciphertext blobs generated at runtime)
+backend/vault_blobs/
+backend/test_vault_blobs/
+
+# Environment variables
+.env
+.env.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Operating System
+.DS_Store
+Thumbs.db
