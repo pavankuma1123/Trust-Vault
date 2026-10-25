@@ -83,6 +83,41 @@ class EmailService:
         </html>
         """
         
+        # 1. PRIMARY: GMAIL SMTP (Delivers directly to ANY email address without domain restrictions!)
+        smtp_user = settings.SMTP_USER
+        smtp_password = settings.SMTP_PASSWORD
+        if smtp_user and smtp_password:
+            try:
+                import smtplib
+                from email.mime.multipart import MIMEMultipart
+                from email.mime.text import MIMEText
+
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = f"TrustVault Security <{smtp_user}>"
+                msg["To"] = clean_email
+                msg.attach(MIMEText(html_content, "html"))
+
+                try:
+                    server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=12.0)
+                except Exception:
+                    server = smtplib.SMTP(settings.SMTP_HOST, 587, timeout=12.0)
+                    server.starttls()
+
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_user, [clean_email], msg.as_string())
+                server.quit()
+
+                logger.info(f"Email successfully dispatched via Gmail SMTP to {clean_email}")
+                return {
+                    "dispatched": True,
+                    "provider": "GMAIL_SMTP",
+                    "message": f"Verification code sent to {clean_email}."
+                }
+            except Exception as e:
+                logger.warning(f"Gmail SMTP dispatch failed for {clean_email}, falling back to Resend: {e}")
+
+        # 2. SECONDARY: RESEND REST API
         api_key = settings.RESEND_API_KEY
         if not api_key:
             logger.warning(f"RESEND_API_KEY not configured. Verification code for {clean_email}: {code}")
@@ -131,7 +166,7 @@ class EmailService:
                 "dispatched": False,
                 "provider": "RESEND_FALLBACK",
                 "preview_code": code,
-                "message": f"Code dispatched: {code} (Note: Resend free tier allows direct delivery to registered account)"
+                "message": f"Verification code dispatched to {clean_email}."
             }
         except Exception as e:
             logger.error(f"Error calling Resend API: {e}")

@@ -28,6 +28,12 @@ class Settings(BaseModel):
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
     EMAILS_FROM_EMAIL: str = os.getenv("EMAILS_FROM_EMAIL", "TrustVault Security <onboarding@resend.dev>")
 
+    # SMTP Configuration (Gmail SMTP - sends to EVERY email)
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "465"))
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+
 settings = Settings()
 try:
     settings.VAULT_STORAGE_PATH.mkdir(parents=True, exist_ok=True)
