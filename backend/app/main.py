@@ -50,15 +50,24 @@ async def immutability_exception_handler(request: Request, exc: ImmutabilityViol
         content={"detail": exc.detail, "error_code": "IMMUTABILITY_VIOLATION"}
     )
 
-# Include API Routers
+# Include API Routers with /api/v1
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(documents_router, prefix=settings.API_V1_STR)
 app.include_router(grants_router, prefix=settings.API_V1_STR)
 app.include_router(audit_router, prefix=settings.API_V1_STR)
 app.include_router(telemetry_router, prefix=settings.API_V1_STR)
 
+# Also include with /v1 prefix for Vercel serverless functions where /api is stripped
+app.include_router(auth_router, prefix="/v1")
+app.include_router(documents_router, prefix="/v1")
+app.include_router(grants_router, prefix="/v1")
+app.include_router(audit_router, prefix="/v1")
+app.include_router(telemetry_router, prefix="/v1")
+
 @app.get("/health", tags=["Health"])
-@app.get(f"{settings.API_V1_STR}/health", tags=["Health"])
+@app.get("/api/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
+@app.get("/v1/health", tags=["Health"])
 def health_check():
     return {
         "status": "HEALTHY",
