@@ -7,7 +7,7 @@ import { UploadModal } from './components/UploadModal';
 import { ShareModal } from './components/ShareModal';
 import { AuditLedgerView } from './components/AuditLedgerView';
 import { TelemetryDashboard } from './components/TelemetryDashboard';
-import { Shield, Lock, Mail, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, User as UserIcon, Sun } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, User as UserIcon, Sun, KeyRound, Sparkles, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -18,13 +18,21 @@ export const App: React.FC = () => {
 
   // Auth Mode: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'>('LOGIN');
+  // Auth Step: 'INPUT' | 'VERIFY' (for multi-step verification)
+  const [authStep, setAuthStep] = useState<'INPUT' | 'VERIFY'>('INPUT');
 
   // Form Fields
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
   
+  // Verification State
+  const [codeSentEmail, setCodeSentEmail] = useState('');
+  const [previewCode, setPreviewCode] = useState<string | null>(null);
+  const [resendCountdown, setResendCountdown] = useState(0);
+
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSuccess, setAuthSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,6 +40,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    let timer: any;
+    if (resendCountdown > 0) {
+      timer = setTimeout(() => setResendCountdown(resendCountdown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCountdown]);
 
   const checkAuth = async () => {
     const token = localStorage.getItem('trustvault_token');
@@ -55,6 +71,7 @@ export const App: React.FC = () => {
     }
   };
 
+  // 1. LOGIN HANDLER
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -72,22 +89,12 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setAuthError('Please enter your full name.');
-      return;
-    }
-    if (!email.trim()) {
-      setAuthError('Please enter your email address.');
-      return;
-    }
-    if (password.length < 8) {
-      setAuthError('Password must be at least 8 characters in length.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setAuthError('Passwords do not match. Please re-enter.');
+  // 2. FORGOT PASSWORD - STEP 1: REQUEST CODE
+  const handleRequestForgotCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const targetEmail = (authStep === 'VERIFY' ? codeSentEmail : email).trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setAuthError('Please enter a valid registered email address.');
       return;
     }
 
@@ -95,25 +102,28 @@ export const App: React.FC = () => {
       setLoading(true);
       setAuthError(null);
       setAuthSuccess(null);
-      const res = await api.register(name.trim(), email.trim(), password);
-      setCurrentUser(res.user);
-      setAuthSuccess('Owner account registered and authenticated successfully!');
-      await loadDocuments();
+      const res = await api.requestPasswordResetCode(targetEmail);
+      setCodeSentEmail(targetEmail);
+      setPreviewCode(res.preview_code || null);
+      setAuthSuccess(res.message || `Verification code sent to ${targetEmail}`);
+      setAuthStep('VERIFY');
+      setResendCountdown(60);
     } catch (err: any) {
-      setAuthError(err.message || 'Registration failed.');
+      setAuthError(err.message || 'Failed to dispatch verification code.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
+  // 2. FORGOT PASSWORD - STEP 2: VERIFY CODE & RESET
+  const handleVerifyForgotCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-      setAuthError('Please enter your registered email address.');
+    if (!verificationCode || verificationCode.trim().length !== 6) {
+      setAuthError('Please enter the 6-digit verification code.');
       return;
     }
     if (password.length < 8) {
-      setAuthError('Password must be at least 8 characters in length.');
+      setAuthError('New password must be at least 8 characters in length.');
       return;
     }
     if (password !== confirmPassword) {
@@ -125,12 +135,75 @@ export const App: React.FC = () => {
       setLoading(true);
       setAuthError(null);
       setAuthSuccess(null);
-      const res = await api.resetPassword(email.trim(), password);
+      const res = await api.verifyPasswordReset(codeSentEmail, verificationCode.trim(), password);
       setCurrentUser(res.user);
-      setAuthSuccess('Password reset successfully! Vault opened.');
+      setAuthSuccess('Password verified and updated! Opening vault...');
       await loadDocuments();
     } catch (err: any) {
-      setAuthError(err.message || 'Password reset failed. Verify registered email.');
+      setAuthError(err.message || 'Invalid or expired verification code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. REGISTER - STEP 1: REQUEST CODE
+  const handleRequestRegisterCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!name.trim()) {
+      setAuthError('Please enter your full name or custodian title.');
+      return;
+    }
+    const targetEmail = (authStep === 'VERIFY' ? codeSentEmail : email).trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setAuthError('Please enter a valid registered email address.');
+      return;
+    }
+    if (authStep === 'INPUT') {
+      if (password.length < 8) {
+        setAuthError('Password must be at least 8 characters in length.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setAuthError('Passwords do not match. Please re-enter.');
+        return;
+      }
+    }
+
+    try {
+      setLoading(true);
+      setAuthError(null);
+      setAuthSuccess(null);
+      const res = await api.requestRegistrationCode(name.trim(), targetEmail, password);
+      setCodeSentEmail(targetEmail);
+      setPreviewCode(res.preview_code || null);
+      setAuthSuccess(res.message || `Verification code sent to ${targetEmail}`);
+      setAuthStep('VERIFY');
+      setResendCountdown(60);
+    } catch (err: any) {
+      setAuthError(err.message || 'Registration request failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. REGISTER - STEP 2: VERIFY CODE & CREATE OWNER
+  const handleVerifyRegistration = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verificationCode || verificationCode.trim().length !== 6) {
+      setAuthError('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setAuthError(null);
+      setAuthSuccess(null);
+      const res = await api.verifyRegistration(codeSentEmail, verificationCode.trim());
+      setCurrentUser(res.user);
+      setAuthSuccess('Email verified! Document Owner custody provisioned.');
+      await loadDocuments();
+    } catch (err: any) {
+      setAuthError(err.message || 'Invalid or expired verification code.');
     } finally {
       setLoading(false);
     }
@@ -138,10 +211,13 @@ export const App: React.FC = () => {
 
   const switchMode = (mode: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD') => {
     setAuthMode(mode);
+    setAuthStep('INPUT');
     setAuthError(null);
     setAuthSuccess(null);
     setPassword('');
     setConfirmPassword('');
+    setVerificationCode('');
+    setPreviewCode(null);
   };
 
   const handleLogout = () => {
@@ -151,9 +227,12 @@ export const App: React.FC = () => {
     setPassword('');
     setConfirmPassword('');
     setName('');
+    setVerificationCode('');
+    setPreviewCode(null);
     setAuthError(null);
     setAuthSuccess(null);
     setAuthMode('LOGIN');
+    setAuthStep('INPUT');
   };
 
   // If not authenticated, render Login / Register / Forgot Password screen matching visual design
@@ -184,17 +263,31 @@ export const App: React.FC = () => {
               </>
             )}
 
-            {authMode === 'FORGOT_PASSWORD' && (
+            {authMode === 'FORGOT_PASSWORD' && authStep === 'INPUT' && (
               <>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reset Vault Password</h1>
-                <p className="text-sm text-slate-400 mt-1 text-center">Enter your registered email and choose a new password</p>
+                <p className="text-sm text-slate-400 mt-1 text-center">Enter your registered email to receive a 6-digit verification code</p>
               </>
             )}
 
-            {authMode === 'REGISTER' && (
+            {authMode === 'FORGOT_PASSWORD' && authStep === 'VERIFY' && (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Verify Code & Reset Password</h1>
+                <p className="text-sm text-slate-400 mt-1 text-center">Enter the verification code and set your new password</p>
+              </>
+            )}
+
+            {authMode === 'REGISTER' && authStep === 'INPUT' && (
               <>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Register your organization</h1>
                 <p className="text-sm text-slate-400 mt-1 text-center">Create a new document custody owner account</p>
+              </>
+            )}
+
+            {authMode === 'REGISTER' && authStep === 'VERIFY' && (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Verify Organization Email</h1>
+                <p className="text-sm text-slate-400 mt-1 text-center">Enter the 6-digit code sent to your email to activate custody privileges</p>
               </>
             )}
           </div>
@@ -215,7 +308,24 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* LOGIN FORM */}
+            {/* Simulated / Fallback Code Badge if present */}
+            {authStep === 'VERIFY' && previewCode && (
+              <div className="mb-4 p-3 bg-indigo-950/60 border border-indigo-700/80 rounded-xl text-xs text-indigo-200 font-mono flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Security Dispatch Code: <strong className="text-cyan-300 text-sm tracking-widest">{previewCode}</strong></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVerificationCode(previewCode)}
+                  className="text-xs text-cyan-400 hover:text-white underline font-medium cursor-pointer"
+                >
+                  Autofill
+                </button>
+              </div>
+            )}
+
+            {/* 1. LOGIN FORM */}
             {authMode === 'LOGIN' && (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
@@ -268,9 +378,9 @@ export const App: React.FC = () => {
               </form>
             )}
 
-            {/* FORGOT PASSWORD FORM */}
-            {authMode === 'FORGOT_PASSWORD' && (
-              <form onSubmit={handleResetPassword} className="space-y-4">
+            {/* 2. FORGOT PASSWORD - STEP 1 (REQUEST CODE) */}
+            {authMode === 'FORGOT_PASSWORD' && authStep === 'INPUT' && (
+              <form onSubmit={handleRequestForgotCode} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-2">Registered Email</label>
                   <div className="relative flex items-center">
@@ -286,8 +396,52 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? 'Dispatching Code...' : 'Send Verification Code'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            )}
+
+            {/* 2. FORGOT PASSWORD - STEP 2 (VERIFY CODE & RESET) */}
+            {authMode === 'FORGOT_PASSWORD' && authStep === 'VERIFY' && (
+              <form onSubmit={handleVerifyForgotCode} className="space-y-4">
+                <div className="flex items-center justify-between p-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="truncate text-slate-200">{codeSentEmail}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthStep('INPUT'); setAuthError(null); setAuthSuccess(null); }}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 underline shrink-0 cursor-pointer"
+                  >
+                    Change Email
+                  </button>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-2">New Password</label>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">6-Digit Verification Code</label>
+                  <div className="relative flex items-center">
+                    <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      placeholder="123456"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-base text-cyan-400 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono tracking-[6px]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">New Confidential Password</label>
                   <div className="relative flex items-center">
                     <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
                     <input
@@ -316,20 +470,33 @@ export const App: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="flex items-center justify-between pt-1 text-xs font-mono">
+                  <span className="text-slate-500">Didn't receive email?</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestForgotCode()}
+                    disabled={loading || resendCountdown > 0}
+                    className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    {resendCountdown > 0 ? `Resend (${resendCountdown}s)` : 'Resend Code'}
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading}
                   className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
                 >
-                  {loading ? 'Resetting Password...' : 'Reset Password & Open Vault'}
+                  {loading ? 'Verifying Code...' : 'Verify Code & Reset Password'}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
             )}
 
-            {/* REGISTER FORM */}
-            {authMode === 'REGISTER' && (
-              <form onSubmit={handleRegister} className="space-y-4">
+            {/* 3. REGISTER - STEP 1 (INPUT DETAILS) */}
+            {authMode === 'REGISTER' && authStep === 'INPUT' && (
+              <form onSubmit={handleRequestRegisterCode} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-2">Full Name / Custodian Name</label>
                   <div className="relative flex items-center">
@@ -395,7 +562,64 @@ export const App: React.FC = () => {
                   disabled={loading}
                   className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
                 >
-                  {loading ? 'Registering Organization...' : 'Register as Owner'}
+                  {loading ? 'Dispatching Verification Code...' : 'Send Verification Code'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            )}
+
+            {/* 3. REGISTER - STEP 2 (VERIFY CODE) */}
+            {authMode === 'REGISTER' && authStep === 'VERIFY' && (
+              <form onSubmit={handleVerifyRegistration} className="space-y-4">
+                <div className="flex items-center justify-between p-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="truncate text-slate-200">{codeSentEmail}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthStep('INPUT'); setAuthError(null); setAuthSuccess(null); }}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 underline shrink-0 cursor-pointer"
+                  >
+                    Change Email
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">6-Digit Verification Code</label>
+                  <div className="relative flex items-center">
+                    <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      placeholder="123456"
+                      value={verificationCode}
+                      onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-base text-cyan-400 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors font-mono tracking-[6px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 text-xs font-mono">
+                  <span className="text-slate-500">Didn't receive email?</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestRegisterCode()}
+                    disabled={loading || resendCountdown > 0}
+                    className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    {resendCountdown > 0 ? `Resend (${resendCountdown}s)` : 'Resend Code'}
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? 'Activating Custody...' : 'Verify & Launch My Vault'}
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
@@ -417,7 +641,7 @@ export const App: React.FC = () => {
               </p>
             )}
 
-            {authMode === 'FORGOT_PASSWORD' && (
+            {(authMode === 'FORGOT_PASSWORD' || (authMode === 'REGISTER' && authStep === 'VERIFY')) && (
               <button
                 type="button"
                 onClick={() => switchMode('LOGIN')}
@@ -428,7 +652,7 @@ export const App: React.FC = () => {
               </button>
             )}
 
-            {authMode === 'REGISTER' && (
+            {authMode === 'REGISTER' && authStep === 'INPUT' && (
               <p className="text-slate-400">
                 Already have an account?{' '}
                 <button

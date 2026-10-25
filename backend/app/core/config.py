@@ -24,6 +24,10 @@ class Settings(BaseModel):
     # Database URL: defaults to /tmp SQLite on Vercel, local SQLite locally, or external PostgreSQL
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:////tmp/trustvault.db" if is_vercel else "sqlite:///./trustvault.db")
 
+    # Email Dispatch via Resend API (Configured via environment variables)
+    RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+    EMAILS_FROM_EMAIL: str = os.getenv("EMAILS_FROM_EMAIL", "TrustVault Security <onboarding@resend.dev>")
+
 settings = Settings()
 try:
     settings.VAULT_STORAGE_PATH.mkdir(parents=True, exist_ok=True)

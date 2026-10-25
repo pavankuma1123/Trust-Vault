@@ -18,6 +18,26 @@ class PasswordResetRequest(BaseModel):
     email: str
     new_password: str
 
+class RequestVerificationCode(BaseModel):
+    email: str
+    purpose: str = "PASSWORD_RESET"  # REGISTRATION or PASSWORD_RESET
+    name: Optional[str] = None
+    password: Optional[str] = None
+
+class VerifyRegistrationRequest(BaseModel):
+    email: str
+    code: str
+
+class VerifyPasswordResetRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str
+
+class VerificationResponse(BaseModel):
+    message: str
+    email: str
+    preview_code: Optional[str] = None
+
 class UserResponse(UserBase):
     model_config = ConfigDict(from_attributes=True)
     

@@ -61,6 +61,62 @@ export const api = {
     return data;
   },
 
+  async requestRegistrationCode(name: string, email: string, password: string): Promise<{ message: string; email: string; preview_code?: string }> {
+    const res = await fetch(`${API_BASE}/auth/register/request-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to request verification code' }));
+      throw new Error(err.detail || 'Failed to request verification code');
+    }
+    return res.json();
+  },
+
+  async verifyRegistration(email: string, code: string): Promise<{ access_token: string; user: User }> {
+    const res = await fetch(`${API_BASE}/auth/register/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Registration verification failed' }));
+      throw new Error(err.detail || 'Registration verification failed');
+    }
+    const data = await res.json();
+    localStorage.setItem('trustvault_token', data.access_token);
+    return data;
+  },
+
+  async requestPasswordResetCode(email: string): Promise<{ message: string; email: string; preview_code?: string }> {
+    const res = await fetch(`${API_BASE}/auth/forgot-password/request-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to request password reset code' }));
+      throw new Error(err.detail || 'Failed to request password reset code');
+    }
+    return res.json();
+  },
+
+  async verifyPasswordReset(email: string, code: string, new_password: string): Promise<{ access_token: string; user: User }> {
+    const res = await fetch(`${API_BASE}/auth/forgot-password/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, new_password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Password reset verification failed' }));
+      throw new Error(err.detail || 'Password reset verification failed');
+    }
+    const data = await res.json();
+    localStorage.setItem('trustvault_token', data.access_token);
+    return data;
+  },
+
   async getMe(): Promise<User> {
     const res = await fetch(`${API_BASE}/auth/me`, {
       headers: getHeaders()
