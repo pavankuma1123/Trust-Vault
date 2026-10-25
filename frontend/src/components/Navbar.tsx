@@ -1,21 +1,26 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { Shield, LogOut, CheckCircle2, User as UserIcon, Key, Fingerprint, Info, X } from 'lucide-react';
+import { Shield, LogOut, CheckCircle2, User as UserIcon, Key, Fingerprint, Info, X, Sun, Moon } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: User | null;
   onLogout: () => void;
   activeTab: 'documents' | 'audit' | 'telemetry';
   setActiveTab: (tab: 'documents' | 'audit' | 'telemetry') => void;
+  theme?: 'dark' | 'light';
+  onToggleTheme?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   onLogout,
   activeTab,
-  setActiveTab
+  setActiveTab,
+  theme = 'dark',
+  onToggleTheme
 }) => {
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Generate initials from user's full name
   const getInitials = (name: string) => {
@@ -42,7 +47,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="bg-slate-900/90 border-b border-slate-800 sticky top-0 z-40 backdrop-blur">
+      <header className={`sticky top-0 z-40 backdrop-blur border-b transition-colors ${
+        theme === 'dark' ? 'bg-slate-900/90 border-slate-800' : 'bg-white/95 border-slate-200 shadow-sm'
+      }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             {/* Logo & Platform Info */}
@@ -126,10 +133,32 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </button>
 
+                {/* Color Theme Toggle */}
+                {onToggleTheme && (
+                  <button
+                    type="button"
+                    onClick={onToggleTheme}
+                    title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+                    className={`p-2 rounded-lg transition-colors border cursor-pointer ${
+                      theme === 'dark'
+                        ? 'text-amber-400 hover:text-amber-300 hover:bg-slate-800 border-slate-800/60'
+                        : 'text-indigo-600 hover:text-indigo-700 hover:bg-slate-100 border-slate-200'
+                    }`}
+                  >
+                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                  </button>
+                )}
+
+                {/* Logout Button */}
                 <button
-                  onClick={onLogout}
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(true)}
                   title="Logout Session"
-                  className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors border border-slate-800/60"
+                  className={`p-2 rounded-lg transition-colors border cursor-pointer ${
+                    theme === 'dark'
+                      ? 'text-slate-400 hover:text-rose-400 hover:bg-slate-800 border-slate-800/60'
+                      : 'text-slate-500 hover:text-rose-600 hover:bg-slate-100 border-slate-200'
+                  }`}
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
@@ -138,6 +167,50 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+          <div className={`w-full max-w-sm rounded-2xl p-6 shadow-2xl border text-center ${
+            theme === 'dark' ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto mb-4">
+              <LogOut className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-bold mb-1.5">
+              Are you sure you want logout?
+            </h3>
+            <p className={`text-xs mb-6 leading-relaxed ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+              Your active encrypted vault session will be closed and you will need to enter your credentials to access your documents again.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className={`py-2.5 px-4 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                  theme === 'dark'
+                    ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                }`}
+              >
+                No, keep logged in
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  onLogout();
+                }}
+                className="py-2.5 px-4 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-colors cursor-pointer"
+              >
+                Yes, log out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* User Credentials & Identity Modal */}
       {showCredentialsModal && currentUser && (
