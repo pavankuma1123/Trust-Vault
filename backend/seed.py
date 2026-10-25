@@ -20,6 +20,10 @@ OWNER_EMAIL = "owner@vault.local"
 OWNER_PASSWORD = "OwnerSecretPass123!"
 OWNER_NAME = "K. Pavan Kumar"
 
+PAVAN_EMAIL = "pavankumarkandru5@gmail.com"
+PAVAN_PASSWORD = "OwnerSecretPass123!"
+PAVAN_NAME = "K. Pavan Kumar"
+
 VIEWER_EMAIL = "viewer@vault.local"
 VIEWER_PASSWORD = "ViewerSecretPass123!"
 VIEWER_NAME = "Viewer"
@@ -48,6 +52,13 @@ def seed_database():
                 role="OWNER",
                 is_active=True
             )
+            pavan = User(
+                name=PAVAN_NAME,
+                email=PAVAN_EMAIL,
+                password_hash=get_password_hash(PAVAN_PASSWORD),
+                role="OWNER",
+                is_active=True
+            )
             viewer = User(
                 name=VIEWER_NAME,
                 email=VIEWER_EMAIL,
@@ -55,10 +66,11 @@ def seed_database():
                 role="VIEWER",
                 is_active=True
             )
-            db.add_all([admin, owner, viewer])
+            db.add_all([admin, owner, pavan, viewer])
             db.commit()
             db.refresh(admin)
             db.refresh(owner)
+            db.refresh(pavan)
             db.refresh(viewer)
 
             audit_service.log_event(
@@ -85,6 +97,20 @@ def seed_database():
         else:
             owner = db.query(User).filter(User.email == OWNER_EMAIL).first()
             viewer = db.query(User).filter(User.email == VIEWER_EMAIL).first()
+            pavan = db.query(User).filter(User.email == PAVAN_EMAIL).first()
+            if not pavan:
+                pavan = User(
+                    name=PAVAN_NAME,
+                    email=PAVAN_EMAIL,
+                    password_hash=get_password_hash(PAVAN_PASSWORD),
+                    role="OWNER",
+                    is_active=True
+                )
+                db.add(pavan)
+                db.commit()
+            else:
+                pavan.password_hash = get_password_hash(PAVAN_PASSWORD)
+                db.commit()
 
         # Seed sample encrypted document if none exists
         doc = db.query(Document).filter(Document.owner_id == owner.id).first()
