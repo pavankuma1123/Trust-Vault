@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from backend.app.db.session import get_db
 from backend.app.api.deps import get_current_user, get_client_ip
 from backend.app.models.user import User
-from backend.app.schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse
+from backend.app.schemas.user import UserCreate, UserLogin, UserResponse, TokenResponse, PasswordResetRequest
 from backend.app.core.security import verify_password, get_password_hash, create_access_token
 from backend.app.services.audit_service import audit_service
 
@@ -100,6 +100,56 @@ def login(login_data: UserLogin, request: Request, db: Session = Depends(get_db)
         details={"action": "USER_LOGIN_SUCCESS", "role": user.role}
     )
 
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": user
+    }
+
+@router.post("/forgot-password", response_model=TokenResponse)
+@router.post("/reset-password", response_model=TokenResponse)
+def reset_password(reset_data: PasswordResetRequest, request: Request, db: Session = Depends(get_db)):
+    ip = get_client_ip(request)
+    clean_email = reset_data.email.strip().lower()
+    user = db.query(User).filter(User.email == clean_email).first()
+    if not user:
+        audit_service.log_event(
+            db=db,
+            event_type="ACCESS_REFUSED",
+            actor_ip=ip,
+            details={"action": "PASSWORD_RESET_NONEXISTENT_USER", "email": clean_email}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this registered email address."
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Deactivated accounts cannot reset passwords."
+        )
+
+    if len(reset_data.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters in length."
+        )
+
+    # Update password hash
+    user.password_hash = get_password_hash(reset_data.new_password)
+    db.commit()
+    db.refresh(user)
+
+    audit_service.log_event(
+        db=db,
+        event_type="METADATA_UPDATE",
+        actor_ip=ip,
+        actor_id=user.id,
+        details={"action": "PASSWORD_RESET_COMPLETED", "user_email": user.email}
+    )
+
+    access_token = create_access_token(subject=user.id)
     return {
         "access_token": access_token,
         "token_type": "bearer",

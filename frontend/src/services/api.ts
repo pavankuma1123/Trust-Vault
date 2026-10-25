@@ -46,6 +46,21 @@ export const api = {
     return data;
   },
 
+  async resetPassword(email: string, new_password: string): Promise<{ access_token: string; user: User }> {
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, new_password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Password reset failed' }));
+      throw new Error(err.detail || 'Password reset failed');
+    }
+    const data = await res.json();
+    localStorage.setItem('trustvault_token', data.access_token);
+    return data;
+  },
+
   async getMe(): Promise<User> {
     const res = await fetch(`${API_BASE}/auth/me`, {
       headers: getHeaders()

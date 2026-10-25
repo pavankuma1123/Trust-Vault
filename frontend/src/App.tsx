@@ -7,7 +7,7 @@ import { UploadModal } from './components/UploadModal';
 import { ShareModal } from './components/ShareModal';
 import { AuditLedgerView } from './components/AuditLedgerView';
 import { TelemetryDashboard } from './components/TelemetryDashboard';
-import { Shield, Lock, AlertCircle, UserPlus, LogIn, CheckCircle2, KeyRound, User as UserIcon } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, User as UserIcon, Sun } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -16,8 +16,8 @@ export const App: React.FC = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [shareDoc, setShareDoc] = useState<Document | null>(null);
 
-  // Auth Mode: 'LOGIN' or 'REGISTER'
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  // Auth Mode: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD'>('LOGIN');
 
   // Form Fields
   const [name, setName] = useState('');
@@ -106,6 +106,44 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setAuthError('Please enter your registered email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setAuthError('Password must be at least 8 characters in length.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setAuthError('Passwords do not match. Please re-enter.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setAuthError(null);
+      setAuthSuccess(null);
+      const res = await api.resetPassword(email.trim(), password);
+      setCurrentUser(res.user);
+      setAuthSuccess('Password reset successfully! Vault opened.');
+      await loadDocuments();
+    } catch (err: any) {
+      setAuthError(err.message || 'Password reset failed. Verify registered email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchMode = (mode: 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD') => {
+    setAuthMode(mode);
+    setAuthError(null);
+    setAuthSuccess(null);
+    setPassword('');
+    setConfirmPassword('');
+  };
+
   const handleLogout = () => {
     api.logout();
     setCurrentUser(null);
@@ -115,178 +153,292 @@ export const App: React.FC = () => {
     setName('');
     setAuthError(null);
     setAuthSuccess(null);
+    setAuthMode('LOGIN');
   };
 
-  // If not authenticated, render Login / Register screen
+  // If not authenticated, render Login / Register / Forgot Password screen matching visual design
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-[#090d16] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(6,182,212,0.15),rgba(255,255,255,0))]">
-        <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
-          
-          {/* Header Banner */}
-          <div className="p-6 text-center space-y-2 border-b border-slate-800 bg-slate-950/60">
-            <div className="inline-flex p-3 bg-cyan-950/80 border border-cyan-800 rounded-xl text-cyan-400 mb-1">
-              <Shield className="w-8 h-8" />
+      <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-between p-4 sm:p-6 relative select-none">
+        {/* Top-Right Theme/Accent Badge */}
+        <div className="absolute top-6 right-6">
+          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-amber-400 shadow-sm flex items-center justify-center">
+            <Sun className="w-4 h-4" />
+          </div>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center w-full my-auto py-8">
+          {/* Logo & Brand Header */}
+          <div className="flex flex-col items-center mb-7">
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 p-2.5 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <Shield className="w-7 h-7 text-white stroke-[2.2]" />
+              </div>
+              <span className="text-2xl font-bold tracking-tight text-white">TrustVault</span>
             </div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Trust<span className="text-cyan-400">Vault</span></h1>
-            <p className="text-xs text-slate-400 font-mono">Cryptographically Enforced Secure Document Exchange</p>
+
+            {authMode === 'LOGIN' && (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Sign in to your Vault</h1>
+                <p className="text-sm text-slate-400 mt-1 text-center">Access encrypted documents with verified audit records</p>
+              </>
+            )}
+
+            {authMode === 'FORGOT_PASSWORD' && (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Reset Vault Password</h1>
+                <p className="text-sm text-slate-400 mt-1 text-center">Enter your registered email and choose a new password</p>
+              </>
+            )}
+
+            {authMode === 'REGISTER' && (
+              <>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Register your organization</h1>
+                <p className="text-sm text-slate-400 mt-1 text-center">Create a new document custody owner account</p>
+              </>
+            )}
           </div>
 
-          {/* Mode Tabs: Sign In vs Register Owner */}
-          <div className="grid grid-cols-2 border-b border-slate-800 text-xs font-mono">
-            <button
-              onClick={() => { setAuthMode('LOGIN'); setAuthError(null); }}
-              className={`py-3 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
-                authMode === 'LOGIN'
-                  ? 'bg-slate-900 text-cyan-400 border-b-2 border-cyan-400'
-                  : 'bg-slate-950/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-              }`}
-            >
-              <LogIn className="w-4 h-4" /> Sign In to Vault
-            </button>
-            <button
-              onClick={() => { setAuthMode('REGISTER'); setAuthError(null); }}
-              className={`py-3 text-center font-semibold transition-colors flex items-center justify-center gap-2 ${
-                authMode === 'REGISTER'
-                  ? 'bg-slate-900 text-cyan-400 border-b-2 border-cyan-400'
-                  : 'bg-slate-950/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-              }`}
-            >
-              <UserPlus className="w-4 h-4" /> Register New Owner
-            </button>
-          </div>
-
-          {/* Form Body */}
-          <div className="p-6 sm:p-8 space-y-5">
+          {/* Card Container */}
+          <div className="w-full max-w-md bg-[#101524]/90 border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-sm">
             {authError && (
-              <div className="p-3 bg-rose-950/70 border border-rose-800 rounded-lg text-xs text-rose-300 font-mono flex items-center gap-2">
+              <div className="mb-4 p-3 bg-rose-950/70 border border-rose-800 rounded-xl text-xs text-rose-300 font-mono flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{authError}</span>
               </div>
             )}
 
             {authSuccess && (
-              <div className="p-3 bg-emerald-950/70 border border-emerald-800 rounded-lg text-xs text-emerald-300 font-mono flex items-center gap-2">
+              <div className="mb-4 p-3 bg-emerald-950/70 border border-emerald-800 rounded-xl text-xs text-emerald-300 font-mono flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>{authSuccess}</span>
               </div>
             )}
 
-            {authMode === 'LOGIN' ? (
-              /* LOGIN FORM */
+            {/* LOGIN FORM */}
+            {authMode === 'LOGIN' && (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Account Email / Identity</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. owner@vault.local or your registered email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                  />
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Registered Email</label>
+                  <div className="relative flex items-center">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="Enter your registered email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Password</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="Enter your confidential password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                  />
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-slate-300">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => switchMode('FORGOT_PASSWORD')}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="Enter your password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-lg text-xs font-semibold font-mono transition-colors shadow-lg shadow-cyan-950 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
                 >
-                  <KeyRound className="w-4 h-4" />
-                  {loading ? 'Authenticating & Verifying Session...' : 'Authenticate & Open Vault'}
+                  {loading ? 'Signing In...' : 'Sign In'}
+                  <ArrowRight className="w-4 h-4" />
                 </button>
-
-                <p className="text-[11px] text-slate-500 font-mono text-center pt-2">
-                  System administrators, vault owners, and auditors authenticate with their strictly private credentials.
-                </p>
               </form>
-            ) : (
-              /* REGISTER OWNER FORM */
-              <form onSubmit={handleRegister} className="space-y-4">
+            )}
+
+            {/* FORGOT PASSWORD FORM */}
+            {authMode === 'FORGOT_PASSWORD' && (
+              <form onSubmit={handleResetPassword} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Full Name / Custodian Name</label>
-                  <div className="relative">
-                    <UserIcon className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Registered Email</label>
+                  <div className="relative flex items-center">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
                     <input
-                      type="text"
+                      type="email"
                       required
-                      placeholder="e.g. Dr. Aris Thorne"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      placeholder="Enter your registered email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono text-slate-300 mb-1">Owner Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="e.g. aris@vault.local"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-mono text-slate-300 mb-1">Vault Password</label>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">New Password</label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
                     <input
                       type="password"
                       required
-                      placeholder="Min. 8 characters"
+                      placeholder="Minimum 8 characters"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-xs font-mono text-slate-300 mb-1">Confirm Password</label>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Confirm New Password</label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="Re-enter new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? 'Resetting Password...' : 'Reset Password & Open Vault'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+            )}
+
+            {/* REGISTER FORM */}
+            {authMode === 'REGISTER' && (
+              <form onSubmit={handleRegister} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Full Name / Custodian Name</label>
+                  <div className="relative flex items-center">
+                    <UserIcon className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. K. Pavan Kumar"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Registered Email</label>
+                  <div className="relative flex items-center">
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="Enter your registered email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Password</label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="Minimum 8 characters"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-2">Confirm Password</label>
+                  <div className="relative flex items-center">
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 pointer-events-none" />
                     <input
                       type="password"
                       required
                       placeholder="Re-enter password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+                      className="w-full bg-[#090d18] border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
                     />
                   </div>
-                </div>
-
-                <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-[11px] text-slate-400 font-mono space-y-1">
-                  <div className="flex items-center gap-1.5 text-cyan-400 font-semibold">
-                    <Lock className="w-3.5 h-3.5" />
-                    Document Owner Privileges:
-                  </div>
-                  <p>
-                    All registered accounts receive instant Document Owner rights. You can upload files, configure AES-256-GCM envelope encryption, delegate DAC access, set download quotas, and revoke access with zero latency.
-                  </p>
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-2.5 rounded-lg text-xs font-semibold font-mono transition-colors shadow-lg shadow-cyan-950 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-600 hover:from-blue-500 hover:via-indigo-500 hover:to-indigo-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 mt-6 text-sm disabled:opacity-50 cursor-pointer"
                 >
-                  <UserPlus className="w-4 h-4" />
-                  {loading ? 'Creating Owner Account & Deriving Keys...' : 'Register & Launch My Vault'}
+                  {loading ? 'Registering Organization...' : 'Register as Owner'}
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
+            )}
+          </div>
+
+          {/* Bottom Footer Navigation */}
+          <div className="mt-8 text-center text-sm">
+            {authMode === 'LOGIN' && (
+              <p className="text-slate-400">
+                Don't have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode('REGISTER')}
+                  className="text-blue-400 hover:text-blue-300 font-medium transition-colors cursor-pointer"
+                >
+                  Register your organization
+                </button>
+              </p>
+            )}
+
+            {authMode === 'FORGOT_PASSWORD' && (
+              <button
+                type="button"
+                onClick={() => switchMode('LOGIN')}
+                className="inline-flex items-center gap-1.5 text-blue-400 hover:text-blue-300 font-medium transition-colors cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back to Sign In
+              </button>
+            )}
+
+            {authMode === 'REGISTER' && (
+              <p className="text-slate-400">
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode('LOGIN')}
+                  className="text-blue-400 hover:text-blue-300 font-medium transition-colors cursor-pointer"
+                >
+                  Sign In
+                </button>
+              </p>
             )}
           </div>
         </div>
